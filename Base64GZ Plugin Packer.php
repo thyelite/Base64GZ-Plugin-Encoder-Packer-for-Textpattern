@@ -18,7 +18,6 @@ $plugin['flags']        = '0';
 
 if (!defined('txpinterface')) @include_once('zem_tpl.php');
 
-
 if (0) {
 ?>
 # --- BEGIN PLUGIN HELP ---
@@ -300,9 +299,15 @@ HTML;
         $blocks = $this->extract_blocks($src);
         $meta   = $this->parse_meta($src);
 
-        // Verbatim HELP/TEXTPACK (BOM strip + EOL normalize only)
+        // Verbatim HELP/TEXTPACK/DATA (BOM strip + EOL normalize only)
         $help     = $this->verbatim_block($blocks['HELP'] ?? '');
         $textpack = $this->verbatim_block($blocks['TEXTPACK'] ?? '');
+        $data     = $this->verbatim_block($blocks['DATA'] ?? '');
+
+        // If no DATA block, try to read a literal $plugin['data'] assignment (HEREDOC/NOWDOC or quoted)
+        if ($data === '') {
+            $data = $this->extract_data_literal($src);
+        }
 
         // Defaults
         $meta['name']        = $meta['name']        !== '' ? $meta['name']        : 'my_plugin';
@@ -327,13 +332,18 @@ HTML;
             'order'      => (int)$meta['order'],
             'flags'      => (int)$meta['flags'],
 
-            // Let core Textile this by providing help_raw. Leave 'help' empty.
+            // Help via Textile in admin
             'help_raw'   => rtrim($help, "\n"),
             'help'       => '',
 
             'textpack'   => rtrim($textpack, "\n"),
             'code'       => $code,
         ];
+
+        // Only attach data if provided
+        if ($data !== '') {
+            $plugin['data'] = rtrim($data, "\n");
+        }
 
         if (isset($meta['allow_html_help'])) {
             $plugin['allow_html_help'] = (int)$meta['allow_html_help'];
@@ -367,7 +377,7 @@ HTML;
     protected function extract_blocks(string $src): array
     {
         $lines  = preg_split("/\r\n|\n|\r/", $src);
-        $blocks = ['CODE'=>'','HELP'=>'','TEXTPACK'=>''];
+        $blocks = ['CODE'=>'','HELP'=>'','TEXTPACK'=>'','DATA'=>''];
         $state  = null;
 
         foreach ($lines as $line) {
@@ -378,6 +388,7 @@ HTML;
                 if (strpos($probe, 'BEGIN PLUGIN CODE')     !== false) { $state = 'CODE';     continue; }
                 if (strpos($probe, 'BEGIN PLUGIN HELP')     !== false) { $state = 'HELP';     continue; }
                 if (strpos($probe, 'BEGIN PLUGIN TEXTPACK') !== false) { $state = 'TEXTPACK'; continue; }
+                if (strpos($probe, 'BEGIN PLUGIN DATA')     !== false) { $state = 'DATA';     continue; }
             } else {
                 if (strpos($probe, 'END PLUGIN '.$state) !== false) { $state = null; continue; }
                 $blocks[$state] .= $line."\n";
@@ -426,6 +437,19 @@ HTML;
         if ($s === '') return '';
         $s = preg_replace('/^\xEF\xBB\xBF/', '', $s);
         return str_replace(["\r\n", "\r"], "\n", $s);
+    }
+
+    protected function extract_data_literal(string $src): string
+    {
+        // HEREDOC/NOWDOC: $plugin['data'] = <<<TAG ... TAG;
+        if (preg_match('/\\$plugin\\[\\s*(?:\'|")data(?:\'|")\\s*\\]\\s*=\\s*<<<[ \\t]*(?:["\']?)([A-Z0-9_]+)(?:["\']?)\\R(.*?)\\R\\1;?/si', $src, $m)) {
+            return $this->verbatim_block($m[2]);
+        }
+        // Quoted string: $plugin['data'] = '...';  (kept verbatim; no variable expansion)
+        if (preg_match('/\\$plugin\\[\\s*(?:\'|")data(?:\'|")\\s*\\]\\s*=\\s*(["\'])(.*?)\\1\\s*;?/s', $src, $m)) {
+            return str_replace(["\r\n", "\r"], "\n", $m[2]);
+        }
+        return '';
     }
 }
 # --- END PLUGIN CODE ---
