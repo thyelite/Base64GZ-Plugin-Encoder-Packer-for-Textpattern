@@ -3,6 +3,7 @@ Base64GZ Plugin Encoder/Packer for Textpattern
 Verified working for 4.8.8
 
 Allows users to paste their PHP plugin in Textpattern template format and pack to a Base64BZ encoded .txt version.
+![Base64GZ Plugin Encoder](https://www.hobbiesfordays.com/images/65.webp)
 
 ---
 
